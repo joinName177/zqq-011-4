@@ -119,12 +119,18 @@ export function createRecordFromTag(tag: string, intensity: number, note: string
   };
 }
 
+export function createDefaultRecord(): MoodRecord {
+  const rec = createRecordFromTag('阴转多云', 5, '默认天气 · 等待首次观测');
+  return { ...rec, id: 'rec-default-standby' };
+}
+
 export function evaluateSynopticSystem(records: MoodRecord[]): SynopticChartData {
   const sorted = [...records].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  const currentRecord = sorted[sorted.length - 1] || createRecordFromTag('阴转多云', 5, '默认天气');
+  const hasRecords = sorted.length > 0;
+  const currentRecord = hasRecords ? sorted[sorted.length - 1] : createDefaultRecord();
 
   const totalPressure = sorted.reduce((acc, r) => acc + r.pressureHpa, 0);
-  const avgPressure = Math.round(totalPressure / sorted.length);
+  const avgPressure = hasRecords ? Math.round(totalPressure / sorted.length) : currentRecord.pressureHpa;
 
   // Barometric zones analysis
   let equatorial = 0; // high intensity + low/moderate pressure
@@ -191,7 +197,14 @@ export function evaluateSynopticSystem(records: MoodRecord[]): SynopticChartData
   let weatherImpact = '气压平衡，情绪系统处于舒适自净区间';
   let upcomingForecast = '预计未来三天无明显冷空气入侵，维持多云转晴趋势。';
 
-  if (avgPressure < 995 || hasStorm) {
+  if (!hasRecords) {
+    vectorName = '观测待机 · 静稳大气环流';
+    originSource = '尚未采集到心情气象数据，流场源动力待建立';
+    flowSpeed = '静风 0 km/h';
+    windAngle = 0;
+    weatherImpact = '天气图待机中，当前播报默认平和天气';
+    upcomingForecast = '完成首次心情签到后，将启动未来三日气象推演。';
+  } else if (avgPressure < 995 || hasStorm) {
     vectorName = '西南热带气旋逆时针切变流';
     originSource = '来自多重待办任务与社交过载的深层热低压';
     flowSpeed = '疾风 48 km/h';
@@ -268,10 +281,15 @@ export function evaluateSynopticSystem(records: MoodRecord[]): SynopticChartData
 
   // Determine system type
   let pressureSystemType: SynopticChartData['pressureSystemType'] = '温带反气旋平稳';
-  if (avgPressure >= 1020) pressureSystemType = '副热带高压晴空';
+  if (!hasRecords) pressureSystemType = '温带反气旋平稳';
+  else if (avgPressure >= 1020) pressureSystemType = '副热带高压晴空';
   else if (avgPressure < 990) pressureSystemType = '强烈冷涡旋';
   else if (alerts.length > 0) pressureSystemType = '锋面气旋多变';
   else pressureSystemType = '深槽低气压阴霾';
+
+  const metSummary = hasRecords
+    ? `气象综观显示：当前心境领空受【${pressureSystemType}】统御。全周期平均气压 ${avgPressure} hPa，近期主要受【${monsoon.vectorName}】影响。${alerts.length > 0 ? `当前挂起 ${alerts.length} 个灾害性气象预警！` : '整层大气环流平稳，无破坏性对流。'}`
+    : `气象综观显示：观测站待机中，尚无有效心情气象记录。当前播报默认天气【${currentRecord.tag}】（${currentRecord.pressureHpa} hPa），完成首次心情签到或恢复示例气象序列后，将生成专属情绪天气图。`;
 
   return {
     chartId: `SYN-${Date.now().toString(36).toUpperCase()}`,
@@ -283,6 +301,6 @@ export function evaluateSynopticSystem(records: MoodRecord[]): SynopticChartData
     monsoon,
     alerts,
     pressureSystemType,
-    metSummary: `气象综观显示：当前心境领空受【${pressureSystemType}】统御。全周期平均气压 ${avgPressure} hPa，近期主要受【${monsoon.vectorName}】影响。${alerts.length > 0 ? `当前挂起 ${alerts.length} 个灾害性气象预警！` : '整层大气环流平稳，无破坏性对流。'}`
+    metSummary
   };
 }

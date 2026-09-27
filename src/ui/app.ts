@@ -23,6 +23,7 @@ export function renderWeatherApp(
 ) {
   const cur = chartData.currentRecord;
   const meta = TAG_METAS[cur.tag] || TAG_METAS['阴转多云'];
+  const hasRecords = chartData.records.length > 0;
 
   const esc = (s: string) =>
     s.replace(/[&<>'"]/g, t => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[t] || t));
@@ -125,7 +126,7 @@ export function renderWeatherApp(
       </header>
 
       ${
-        chartData.alerts.length > 0
+        hasRecords && chartData.alerts.length > 0
           ? `
         <div class="alert-banner">
           <div class="alert-banner-left">
@@ -139,6 +140,51 @@ export function renderWeatherApp(
           : ''
       }
 
+      ${
+        !hasRecords
+          ? `
+        <!-- Empty State: no valid observation records -->
+        <div class="empty-state">
+          <div class="empty-state-icon">🌫️</div>
+          <h2>暂无有效气象观测记录</h2>
+          <p class="empty-state-desc">
+            观测站待机中：尚未采集到任何有效的心情气象数据，情绪天气图已暂停绘制，不会读取不存在的当前天气。
+          </p>
+
+          <div class="empty-default-weather">
+            <div class="empty-default-title">📡 默认天气 · 待机播报（非真实观测）</div>
+            <div class="current-telemetry">
+              <div class="telemetry-card">
+                <div class="lbl">心境气压 (Barometer)</div>
+                <div class="val" style="color:var(--met-cyan);">${cur.pressureHpa} <span style="font-size:12px;">hPa</span></div>
+                <div class="lbl">待机默认值</div>
+              </div>
+              <div class="telemetry-card">
+                <div class="lbl">情绪温度 (Temperature)</div>
+                <div class="val" style="color:var(--met-gold);">${cur.temperatureC} <span style="font-size:12px;">°C</span></div>
+                <div class="lbl">待机默认值</div>
+              </div>
+              <div class="telemetry-card">
+                <div class="lbl">心理湿度 (Humidity)</div>
+                <div class="val" style="color:var(--met-blue);">${cur.humidityPercent}%</div>
+                <div class="lbl">待机默认值</div>
+              </div>
+              <div class="telemetry-card">
+                <div class="lbl">默认天气 (Default)</div>
+                <div class="val" style="color:#fff;">${meta.icon} ${esc(cur.tag)}</div>
+                <div class="lbl">等待首次观测</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="empty-actions">
+            <button class="btn-record-mood" id="btnEmptyLog">✍️ 记录第一条心情天气</button>
+            <button class="btn-reset" id="btnEmptySample">🌤️ 恢复示例气象序列</button>
+          </div>
+          <p class="empty-state-hint">记录第一条心情，或恢复内置 14 天示例气象序列后，将自动生成专属情绪天气图。</p>
+        </div>
+      `
+          : `
       <div class="met-grid">
         <!-- Left: Synoptic Chart & Telemetry -->
         <main class="synoptic-box">
@@ -282,6 +328,8 @@ export function renderWeatherApp(
           </section>
         </aside>
       </div>
+      `
+      }
 
       <!-- Modal: Record Daily Mood Weather -->
       ${
@@ -330,6 +378,10 @@ export function renderWeatherApp(
   // Attach event listeners
   container.querySelector('#btnOpenLog')?.addEventListener('click', handlers.onOpenLogModal);
   container.querySelector('#btnReset')?.addEventListener('click', handlers.onResetData);
+
+  // Empty-state recovery actions
+  container.querySelector('#btnEmptyLog')?.addEventListener('click', handlers.onOpenLogModal);
+  container.querySelector('#btnEmptySample')?.addEventListener('click', handlers.onResetData);
 
   container.querySelectorAll('.record-pill').forEach(pill => {
     pill.addEventListener('click', () => {

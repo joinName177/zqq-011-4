@@ -4,34 +4,67 @@ import { createRecordFromTag } from '../core/meteorology-engine';
 
 const STORAGE_KEY = 'mood_meteorology_records_v1';
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+export function isValidMoodRecord(raw: unknown): raw is MoodRecord {
+  if (!raw || typeof raw !== 'object') return false;
+  const r = raw as Record<string, unknown>;
+  return (
+    typeof r.id === 'string' &&
+    r.id.length > 0 &&
+    typeof r.date === 'string' &&
+    /^\d{4}-\d{2}-\d{2}$/.test(r.date) &&
+    !Number.isNaN(new Date(r.date).getTime()) &&
+    typeof r.tag === 'string' &&
+    r.tag.length > 0 &&
+    isFiniteNumber(r.intensity) &&
+    r.intensity >= 1 &&
+    r.intensity <= 10 &&
+    typeof r.note === 'string' &&
+    isFiniteNumber(r.pressureHpa) &&
+    isFiniteNumber(r.temperatureC) &&
+    isFiniteNumber(r.humidityPercent) &&
+    isFiniteNumber(r.windSpeedKmH) &&
+    isFiniteNumber(r.windDirectionDeg) &&
+    typeof r.windDirectionName === 'string'
+  );
+}
+
 export class LocalStorageMoodAdapter implements MoodRepositoryPort {
+  private persist(records: MoodRecord[]): void {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+  }
+
   getAll(): MoodRecord[] {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      return this.resetToSample();
+      // 存储为空：返回空序列，由界面呈现空状态，不再静默填充示例数据
+      return [];
     }
     try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        return [];
       }
+      // 逐条校验，丢弃损坏记录；全部无效时返回空序列进入空状态
+      return parsed.filter(isValidMoodRecord);
     } catch {
-      // ignore
+      return [];
     }
-    return this.resetToSample();
   }
 
   add(record: MoodRecord): void {
-    const records = this.getAll();
-    // remove existing for same date if any
-    const filtered = records.filter(r => r.date !== record.date);
-    filtered.push(record);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+    // 直接基于已校验的现有记录追加，空存储时不会先回填示例序列
+    const records = this.getAll().filter(r => r.date !== record.date);
+    records.push(record);
+    this.persist(records);
   }
 
   delete(id: string): void {
     const records = this.getAll().filter(r => r.id !== id);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    this.persist(records);
   }
 
   resetToSample(): MoodRecord[] {
@@ -59,7 +92,7 @@ export class LocalStorageMoodAdapter implements MoodRepositoryPort {
       return createRecordFromTag(item.tag, item.intensity, item.note, dateStr);
     });
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    this.persist(records);
     return records;
   }
 }
