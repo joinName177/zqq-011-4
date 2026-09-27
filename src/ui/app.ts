@@ -23,6 +23,8 @@ export function renderWeatherApp(
 ) {
   const cur = chartData.currentRecord;
   const meta = TAG_METAS[cur.tag] || TAG_METAS['阴转多云'];
+  // 无任何有效观测记录时进入空状态：当前天气为引擎生成的默认天气
+  const isEmpty = chartData.records.length === 0;
 
   const esc = (s: string) =>
     s.replace(/[&<>'"]/g, t => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[t] || t));
@@ -103,7 +105,7 @@ export function renderWeatherApp(
         <circle cx="0" cy="0" r="14" fill="#070d18" stroke="#00f0ff" stroke-width="2" />
         <text x="0" y="5" font-size="12" text-anchor="middle">${meta.icon}</text>
         <rect x="-65" y="22" width="130" height="24" rx="4" fill="rgba(14,23,38,0.85)" stroke="rgba(0,240,255,0.3)" />
-        <text x="0" y="38" fill="#e2eafc" font-size="11" font-weight="bold" text-anchor="middle">气压观测点: ${cur.pressureHpa} hPa</text>
+        <text x="0" y="38" fill="#e2eafc" font-size="11" font-weight="bold" text-anchor="middle">${isEmpty ? '默认天气' : '气压观测点'}: ${cur.pressureHpa} hPa</text>
       </g>
     </svg>
   `;
@@ -144,34 +146,57 @@ export function renderWeatherApp(
         <main class="synoptic-box">
           <div class="box-title">
             <h2>🌐 个人专属情绪综观天气图 (Synoptic Chart)</h2>
-            <span style="font-size:12px;color:var(--met-muted);font-family:monospace;">
-              ${chartData.chartId} · ${chartData.generatedDate}
-            </span>
+            <div class="box-title-meta">
+              ${isEmpty ? '<span class="default-badge">📡 默认天气 · 等待观测</span>' : ''}
+              <span style="font-size:12px;color:var(--met-muted);font-family:monospace;">
+                ${chartData.chartId} · ${chartData.generatedDate}
+              </span>
+            </div>
           </div>
 
-          <!-- Current Telemetry -->
-          <div class="current-telemetry">
-            <div class="telemetry-card">
-              <div class="lbl">心境气压 (Barometer)</div>
-              <div class="val" style="color:var(--met-cyan);">${cur.pressureHpa} <span style="font-size:12px;">hPa</span></div>
-              <div class="lbl">${cur.pressureHpa < 1000 ? '低压对流' : '高压反气旋'}</div>
+          ${
+            isEmpty
+              ? `
+            <!-- Empty State: no valid observation records -->
+            <div class="empty-state">
+              <div class="empty-icon">🌫️</div>
+              <div class="empty-title">暂无情绪气象观测记录</div>
+              <p class="empty-desc">
+                气象台尚未接收到有效的心情观测数据，下方天气图当前展示默认天气（${esc(cur.tag)}）。<br/>
+                记录第一条心情，或恢复内置的 14 天示例气象序列。
+              </p>
+              <div class="empty-actions">
+                <button class="btn-record-mood" id="btnEmptyAdd">✍️ 记录第一条心情天气</button>
+                <button class="btn-reset" id="btnEmptySample">🔄 恢复示例气象序列</button>
+              </div>
             </div>
-            <div class="telemetry-card">
-              <div class="lbl">情绪温度 (Temperature)</div>
-              <div class="val" style="color:var(--met-gold);">${cur.temperatureC} <span style="font-size:12px;">°C</span></div>
-              <div class="lbl">体感适宜度良好</div>
+          `
+              : `
+            <!-- Current Telemetry -->
+            <div class="current-telemetry">
+              <div class="telemetry-card">
+                <div class="lbl">心境气压 (Barometer)</div>
+                <div class="val" style="color:var(--met-cyan);">${cur.pressureHpa} <span style="font-size:12px;">hPa</span></div>
+                <div class="lbl">${cur.pressureHpa < 1000 ? '低压对流' : '高压反气旋'}</div>
+              </div>
+              <div class="telemetry-card">
+                <div class="lbl">情绪温度 (Temperature)</div>
+                <div class="val" style="color:var(--met-gold);">${cur.temperatureC} <span style="font-size:12px;">°C</span></div>
+                <div class="lbl">体感适宜度良好</div>
+              </div>
+              <div class="telemetry-card">
+                <div class="lbl">心理湿度 (Humidity)</div>
+                <div class="val" style="color:var(--met-blue);">${cur.humidityPercent}%</div>
+                <div class="lbl">${cur.humidityPercent > 80 ? '湿润多云' : '清爽干燥'}</div>
+              </div>
+              <div class="telemetry-card">
+                <div class="lbl">思绪风场 (Wind Field)</div>
+                <div class="val" style="color:#fff;">${cur.windDirectionName}风</div>
+                <div class="lbl">${cur.windSpeedKmH} km/h</div>
+              </div>
             </div>
-            <div class="telemetry-card">
-              <div class="lbl">心理湿度 (Humidity)</div>
-              <div class="val" style="color:var(--met-blue);">${cur.humidityPercent}%</div>
-              <div class="lbl">${cur.humidityPercent > 80 ? '湿润多云' : '清爽干燥'}</div>
-            </div>
-            <div class="telemetry-card">
-              <div class="lbl">思绪风场 (Wind Field)</div>
-              <div class="val" style="color:#fff;">${cur.windDirectionName}风</div>
-              <div class="lbl">${cur.windSpeedKmH} km/h</div>
-            </div>
-          </div>
+          `
+          }
 
           <!-- SVG Weather Map -->
           <div class="synoptic-map-wrap">
@@ -189,9 +214,11 @@ export function renderWeatherApp(
           <div class="timeline-section">
             <h3>📅 近期气象观测序列 (点击切换观测标本)</h3>
             <div class="records-strip">
-              ${chartData.records
-                .map(
-                  r => `
+              ${
+                chartData.records.length > 0
+                  ? chartData.records
+                      .map(
+                        r => `
                 <div class="record-pill ${r.id === cur.id ? 'active' : ''}" data-id="${r.id}">
                   <div class="pill-date">${r.date.slice(5)}</div>
                   <div class="pill-icon">${(TAG_METAS[r.tag] || TAG_METAS['阴转多云']).icon}</div>
@@ -199,8 +226,10 @@ export function renderWeatherApp(
                   <div class="pill-pressure">${r.pressureHpa} hPa</div>
                 </div>
               `
-                )
-                .join('')}
+                      )
+                      .join('')
+                  : `<div class="records-empty">🛰️ 暂无观测序列 — 第一条记录保存后将在此生成时间线</div>`
+              }
             </div>
           </div>
         </main>
@@ -330,6 +359,9 @@ export function renderWeatherApp(
   // Attach event listeners
   container.querySelector('#btnOpenLog')?.addEventListener('click', handlers.onOpenLogModal);
   container.querySelector('#btnReset')?.addEventListener('click', handlers.onResetData);
+  // Empty-state CTAs (only rendered when there are no valid records)
+  container.querySelector('#btnEmptyAdd')?.addEventListener('click', handlers.onOpenLogModal);
+  container.querySelector('#btnEmptySample')?.addEventListener('click', handlers.onResetData);
 
   container.querySelectorAll('.record-pill').forEach(pill => {
     pill.addEventListener('click', () => {

@@ -1,7 +1,7 @@
 import './ui/styles.css';
 import { LocalStorageMoodAdapter } from './adapters/local-storage-mood.adapter';
 import { MeteorologyEngineAdapter } from './adapters/meteorology-engine.adapter';
-import { createRecordFromTag } from './core/meteorology-engine';
+import { createRecordFromTag, toLocalDateStr } from './core/meteorology-engine';
 import { MoodRecord, SynopticChartData } from './core/models';
 import { renderWeatherApp } from './ui/app';
 import { summarizeMood, chartSummary } from './core/mood-summary';
@@ -53,7 +53,8 @@ function refreshView() {
         refreshView();
       },
       onSubmitLog: (tag: string, intensity: number, note: string) => {
-        const todayStr = new Date().toISOString().split('T')[0];
+        // 使用本地日期，保证新记录归属"今天"并成为天气图当前观测
+        const todayStr = toLocalDateStr();
         const newRecord = createRecordFromTag(tag, intensity, note, todayStr);
         repo.add(newRecord);
         records = repo.getAll();

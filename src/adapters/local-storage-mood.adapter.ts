@@ -1,37 +1,73 @@
 import { MoodRecord } from '../core/models';
 import { MoodRepositoryPort } from '../ports/mood-repository.port';
-import { createRecordFromTag } from '../core/meteorology-engine';
+import { createRecordFromTag, isValidMoodRecord, toLocalDateStr } from '../core/meteorology-engine';
 
 const STORAGE_KEY = 'mood_meteorology_records_v1';
 
 export class LocalStorageMoodAdapter implements MoodRepositoryPort {
+  /**
+   * 读取全部记录，三种存储状态分别处理：
+   * - 从未写入（无 key）：首次使用，播种内置 14 天示例序列；
+   * - 内容损坏（非法 JSON / 非数组 / 全部记录无效）：恢复示例序列，保证界面可用；
+   * - 合法数组（含显式空数组）：过滤无效条目后原样返回，空数组交由 UI 展示空状态。
+   */
   getAll(): MoodRecord[] {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
+    if (raw === null) {
       return this.resetToSample();
     }
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
-      }
-    } catch {
-      // ignore
+    const parsed = this.parseStored(raw);
+    if (parsed === null) {
+      return this.resetToSample();
     }
-    return this.resetToSample();
+    return parsed;
+  }
+
+  /**
+   * 解析存储内容。返回 null 表示数据损坏需要恢复；
+   * 返回数组（可能为空）表示可安全使用的有效记录。
+   */
+  private parseStored(raw: string): MoodRecord[] | null {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+    if (!Array.isArray(parsed)) {
+      return null;
+    }
+    const valid = parsed.filter(isValidMoodRecord);
+    // 有内容但全部无效，等同数据损坏
+    if (parsed.length > 0 && valid.length === 0) {
+      return null;
+    }
+    return valid;
+  }
+
+  /** 读取原始存储（不触发示例播种/恢复），供写入操作使用。 */
+  private readStoredRaw(): MoodRecord[] {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw === null) {
+      return [];
+    }
+    return this.parseStored(raw) ?? [];
+  }
+
+  private save(records: MoodRecord[]): void {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
   }
 
   add(record: MoodRecord): void {
-    const records = this.getAll();
-    // remove existing for same date if any
-    const filtered = records.filter(r => r.date !== record.date);
-    filtered.push(record);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+    // 基于真实存储内容追加，空存储时从空白序列开始，绝不静默混入示例数据
+    const records = this.readStoredRaw().filter(r => r.date !== record.date);
+    records.push(record);
+    this.save(records);
   }
 
   delete(id: string): void {
-    const records = this.getAll().filter(r => r.id !== id);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    const records = this.readStoredRaw().filter(r => r.id !== id);
+    this.save(records);
   }
 
   resetToSample(): MoodRecord[] {
@@ -55,11 +91,11 @@ export class LocalStorageMoodAdapter implements MoodRepositoryPort {
     const now = new Date();
     const records: MoodRecord[] = sampleSequence.map(item => {
       const d = new Date(now.getTime() - item.daysAgo * 86400000);
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = toLocalDateStr(d);
       return createRecordFromTag(item.tag, item.intensity, item.note, dateStr);
     });
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    this.save(records);
     return records;
   }
 }
